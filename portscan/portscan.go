@@ -41,8 +41,8 @@ func main() {
 		os.Exit(0)
 	}
 
-	hosts := ParseHost(host)
-	ports := ParsePort(port)
+	ipList, _ := ParseIP(host)
+	portList, _ := ParsePort(port)
 
 	if outputFile != "" {
 		var err error
@@ -53,8 +53,8 @@ func main() {
 
 	startTime := time.Now()
 
-	for _, host := range hosts {
-		for _, port := range ports {
+	for _, host := range ipList {
+		for _, port := range portList {
 			ch <- true
 			wg.Add(1)
 			go scan(host, port)

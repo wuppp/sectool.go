@@ -1,10 +1,10 @@
 package common
 
 import (
+	"bufio"
 	"fmt"
 	"net"
 	"os"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -38,42 +38,6 @@ func ljust(s string, width int) string {
 	return s + strings.Repeat(" ", n)
 }
 
-func ParseHost(hostString string) []string {
-	var hosts []string
-
-	pair := strings.Split(hostString, ",")
-	for _, item := range pair {
-		if strings.Contains(item, "/") {
-			_hosts, err := ParseCIDR(item)
-			checkError(err)
-			for _, v := range _hosts {
-				hosts = append(hosts, v)
-			}
-		} else if strings.Contains(item, "-") {
-
-			pair := strings.Split(item, ".")
-			prefix := strings.Join(pair[0:len(pair)-1], ".")
-
-			r := regexp.MustCompile(`(\d+)-(\d+)`)
-			hostRange := r.FindStringSubmatch(item)
-
-			if len(hostRange) == 3 {
-				start, _ := strconv.Atoi(hostRange[1])
-				end, _ := strconv.Atoi(hostRange[2])
-				for i := start; i <= end; i++ {
-					ip_str := strings.Join([]string{prefix, strconv.Itoa(i)}, ".")
-					hosts = append(hosts, ip_str)
-				}
-			}
-
-		} else if isValidIPV4(item) {
-			hosts = append(hosts, item)
-		}
-	}
-
-	return hosts
-}
-
 func isValidIPV4(ip string) bool {
 	b := net.ParseIP(ip)
 	if b.To4() == nil {
@@ -82,22 +46,99 @@ func isValidIPV4(ip string) bool {
 	return true
 }
 
-func ParseCIDR(cidr string) ([]string, error) {
-	ip, ipnet, err := net.ParseCIDR(cidr)
-	if err != nil {
-		return nil, err
+func ParsePort(portString string) ([]int, error) {
+
+	var portList []int
+
+	pair := strings.Split(portString, ",")
+	for _, item := range pair {
+		if strings.Contains(item, "-") {
+			portRange := strings.Split(item, "-")
+			if len(portRange) != 2 {
+				return portList, fmt.Errorf("%s is invalid port range", portString)
+			}
+			start, _ := strconv.Atoi(portRange[0])
+			end, _ := strconv.Atoi(portRange[1])
+			for i := start; i <= end; i++ {
+				portList = append(portList, i)
+			}
+		} else {
+			item, _ := strconv.Atoi(item)
+			portList = append(portList, item)
+		}
 	}
 
-	var ips []string
-	for ip := ip.Mask(ipnet.Mask); ipnet.Contains(ip); inc(ip) {
-		ips = append(ips, ip.String())
-	}
-	// remove network address and broadcast address
-	return ips[1 : len(ips)-1], nil
-
+	sort.Ints(portList)
+	return portList, nil
 }
 
-func inc(ip net.IP) {
+func ParseIP(line string) ([]string, error) {
+	ipList := []string{}
+
+	if net.ParseIP(line) != nil {
+		ipList = append(ipList, line)
+	} else if ip, network, err := net.ParseCIDR(line); err == nil {
+		s := []string{}
+		for ip := ip.Mask(network.Mask); network.Contains(ip); increaseIP(ip) {
+			s = append(s, ip.String())
+		}
+		for _, ip := range s[1 : len(s)-1] {
+			ipList = append(ipList, ip)
+		}
+	} else if strings.Contains(line, "-") {
+		splitIP := strings.SplitN(line, "-", 2)
+		ip := net.ParseIP(splitIP[0])
+		endIP := net.ParseIP(splitIP[1])
+		if endIP != nil {
+			if !isStartingIPLower(ip, endIP) {
+				return ipList, fmt.Errorf("%s is greater than %s", ip.String(), endIP.String())
+			}
+			ipList = append(ipList, ip.String())
+			for !ip.Equal(endIP) {
+				increaseIP(ip)
+				ipList = append(ipList, ip.String())
+			}
+		} else {
+			ipOct := strings.SplitN(ip.String(), ".", 4)
+			endIP := net.ParseIP(ipOct[0] + "." + ipOct[1] + "." + ipOct[2] + "." + splitIP[1])
+			if endIP != nil {
+				if !isStartingIPLower(ip, endIP) {
+					return ipList, fmt.Errorf("%s is greater than %s", ip.String(), endIP.String())
+				}
+				ipList = append(ipList, ip.String())
+				for !ip.Equal(endIP) {
+					increaseIP(ip)
+					ipList = append(ipList, ip.String())
+				}
+			} else {
+				return ipList, fmt.Errorf("%s is not an IP Address or CIDR Network", line)
+			}
+		}
+	} else {
+		return ipList, fmt.Errorf("%s is not an IP Address or CIDR Network", line)
+	}
+
+	return ipList, nil
+}
+
+// LinesToIPList processes a list of IP addresses or networks in CIDR format.
+// Returning a list of all possible IP addresses.
+func LinesToIPList(lines []string) ([]string, error) {
+	ipList := []string{}
+	for _, line := range lines {
+		_ipList, err := ParseIP(line)
+		if err != nil {
+			return _ipList, fmt.Errorf("%s is not an IP Address", line)
+		}
+		for _, line := range _ipList {
+			ipList = append(ipList, line)
+		}
+	}
+	return ipList, nil
+}
+
+// increases an IP by a single address.
+func increaseIP(ip net.IP) {
 	for j := len(ip) - 1; j >= 0; j-- {
 		ip[j]++
 		if ip[j] > 0 {
@@ -106,29 +147,34 @@ func inc(ip net.IP) {
 	}
 }
 
-func ParsePort(portString string) []int {
-
-	var ports []int
-
-	pair := strings.Split(portString, ",")
-	for _, item := range pair {
-		if strings.Contains(item, "-") {
-			portRange := strings.Split(item, "-")
-			if len(portRange) == 2 {
-				start, _ := strconv.Atoi(portRange[0])
-				end, _ := strconv.Atoi(portRange[1])
-				for i := start; i <= end; i++ {
-					ports = append(ports, i)
-				}
-			}
-		} else {
-			item, _ := strconv.Atoi(item)
-			ports = append(ports, item)
+func isStartingIPLower(start, end net.IP) bool {
+	if len(start) != len(end) {
+		return false
+	}
+	for i := range start {
+		if start[i] > end[i] {
+			return false
 		}
 	}
+	return true
+}
 
-	sort.Ints(ports)
-	return ports
+// ReadFileLines returns all the lines in a file.
+func ReadFileLines(path string) ([]string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	lines := []string{}
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		if scanner.Text() == "" {
+			continue
+		}
+		lines = append(lines, scanner.Text())
+	}
+	return lines, scanner.Err()
 }
 
 func checkError(err error) {

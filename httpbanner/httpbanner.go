@@ -53,12 +53,12 @@ func main() {
 		os.Exit(0)
 	}
 
-	hosts := ParseHost(host)
-	ports := ParsePort(port)
+	ipList, _ := ParseIP(host)
+	portList, _ := ParsePort(port)
 	urls := []string{}
 
-	for _, host := range hosts {
-		for _, port := range ports {
+	for _, host := range ipList {
+		for _, port := range portList {
 			url := fmt.Sprintf("http://%s:%d/", host, port)
 			urls = append(urls, url)
 		}
