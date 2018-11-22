@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -29,7 +30,7 @@ func main() {
 	flag.StringVar(&port, "port", "", "scan port. format: 1-65535 | 21,22,25 | 8080")
 	flag.IntVar(&timeout, "timeout", 2, "http connect timeout")
 	flag.BoolVar(&verbose, "v", false, "show verbose")
-	flag.IntVar(&goroutineNum, "t", 5000, "scan thread number. Default 5000")
+	flag.IntVar(&goroutineNum, "t", 2000, "scan thread number. Default 2000")
 	flag.StringVar(&outputFile, "o", "", "save result file")
 	flag.Parse()
 
@@ -44,6 +45,14 @@ func main() {
 	ipList, _ := ParseIP(host)
 	portList, _ := ParsePort(port)
 
+	scanList := []string{}
+	for _, host := range ipList {
+		for _, port := range portList {
+			scanHost := fmt.Sprintf("%s:%d", host, port)
+			scanList = append(scanList, scanHost)
+		}
+	}
+
 	if outputFile != "" {
 		var err error
 		f, err = os.OpenFile(outputFile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
@@ -51,17 +60,21 @@ func main() {
 		defer f.Close()
 	}
 
-	startTime := time.Now()
+	fmt.Printf("host: %s\n", host)
+	fmt.Printf("port: %s\n", port)
+	fmt.Printf("Number of scans: %d\n", len(scanList))
 
-	for _, host := range ipList {
-		for _, port := range portList {
-			ch <- true
-			wg.Add(1)
-			go scan(host, port)
-		}
+	startTime := time.Now()
+	for _, line := range scanList {
+		ch <- true
+		wg.Add(1)
+
+		pair := strings.SplitN(line, ":", 2)
+		host := pair[0]
+		port, _ := strconv.Atoi(pair[1])
+		go scan(host, port)
 	}
 	wg.Wait()
-
 	scanDuration := time.Since(startTime)
 	fmt.Printf("scan finished in %v", scanDuration)
 

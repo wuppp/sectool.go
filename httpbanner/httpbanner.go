@@ -123,6 +123,7 @@ func main() {
 	fmt.Printf("\n")
 	fmt.Printf("Number of scans: %d\n", len(scanList))
 
+	startTime := time.Now()
 	for _, line := range scanList {
 		ch <- true
 		wg.Add(1)
@@ -137,6 +138,9 @@ func main() {
 		go fetch(url)
 	}
 	wg.Wait()
+	scanDuration := time.Since(startTime)
+	fmt.Printf("scan finished in %v", scanDuration)
+
 	if outputJSONFile != "" {
 		saveResult(result)
 	}
