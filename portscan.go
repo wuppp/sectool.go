@@ -27,7 +27,7 @@ var (
 func main() {
 
 	flag.StringVar(&host, "host", "", "scan host. format: 127.0.0.1 | 192.168.1.1/24 | 192.168.1.1-5")
-	flag.StringVar(&port, "port", "", "scan port. format: 1-65535 | 21,22,25 | 8080")
+	flag.StringVar(&port, "p", "", "scan port. format: 1-65535 | 21,22,25 | 8080")
 	flag.IntVar(&timeout, "timeout", 2, "http connect timeout")
 	flag.BoolVar(&verbose, "v", false, "show verbose")
 	flag.IntVar(&goroutineNum, "t", 2000, "scan thread number. Default 2000")
