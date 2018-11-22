@@ -44,6 +44,8 @@ type HttpInfo struct {
 	Url        string `json:"url"`
 	Title      string `json:"title"`
 	Server     string `json:"server"`
+	Length     string `json:"length"`
+	Type       string `json:"type"`
 }
 
 func (i *arrayFlags) String() string {
@@ -63,7 +65,7 @@ func main() {
 	flag.StringVar(&file, "f", "", "load external file")
 	flag.IntVar(&goroutineNum, "t", 1000, "scan thread number. Default 1000")
 	flag.StringVar(&outputJSONFile, "oJ", "", "save result file")
-	flag.StringVar(&path, "path", "/", "save result file")
+	flag.StringVar(&path, "path", "/", "request path example: /admin")
 	flag.BoolVar(&redirect, "redirect", false, "follow 30x redirect")
 	flag.Var(&reqHeaders, "H", "request headers. exmaple: -H User-Agent: xx -H Referer: xx")
 	flag.Parse()
@@ -209,7 +211,8 @@ func fetch(url string) {
 
 	// 获取响应头Server字段
 	info.Server = resp.Header.Get("Server")
-
+	info.Length = resp.Header.Get("Content-Length")
+	info.Type = resp.Header.Get("Content-Type")
 	result = append(result, *info)
-	fmt.Printf("%-5d %-50s %-60s %s\n", info.StatusCode, info.Url, info.Server, info.Title)
+	fmt.Printf("%-5d %-5s %-32s %-50s %-60s %s\n", info.StatusCode, info.Length, info.Type, info.Url, info.Server, info.Title)
 }
