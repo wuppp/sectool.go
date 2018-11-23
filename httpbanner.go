@@ -214,5 +214,5 @@ func fetch(url string) {
 	info.Length = resp.Header.Get("Content-Length")
 	info.Type = resp.Header.Get("Content-Type")
 	result = append(result, *info)
-	fmt.Printf("%-5d %-5s %-32s %-50s %-60s %s\n", info.StatusCode, info.Length, info.Type, info.Url, info.Server, info.Title)
+	fmt.Printf("%-5d %-6s %-32s %-50s %-60s %s\n", info.StatusCode, info.Length, info.Type, info.Url, info.Server, info.Title)
 }
