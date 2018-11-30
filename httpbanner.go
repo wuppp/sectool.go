@@ -118,6 +118,7 @@ func main() {
 	fmt.Printf("host: %s\n", host)
 	fmt.Printf("port: %s\n", port)
 	fmt.Printf("path: %s\n", path)
+	fmt.Printf("file: %s\n", file)
 	fmt.Printf("headers:\n")
 	for k, v := range headers {
 		fmt.Printf("    %s: %s\n", k, v)
@@ -212,7 +213,12 @@ func fetch(url string) {
 	// 获取响应头Server字段
 	info.Server = resp.Header.Get("Server")
 	info.Length = resp.Header.Get("Content-Length")
-	info.Type = resp.Header.Get("Content-Type")
+
+	pair := strings.SplitN(resp.Header.Get("Content-Type"), ";", 2)
+	if len(pair) == 2 {
+		info.Type = pair[0]
+	}
+
 	result = append(result, *info)
-	fmt.Printf("%-5d %-6s %-32s %-50s %-60s %s\n", info.StatusCode, info.Length, info.Type, info.Url, info.Server, info.Title)
+	fmt.Printf("%-5d %-6s %-16s %-50s %-60s %s\n", info.StatusCode, info.Length, info.Type, info.Url, info.Server, info.Title)
 }
