@@ -111,7 +111,17 @@ func main() {
 		}
 
 		for _, line := range lines {
-			scanList = append(scanList, line)
+			line = strings.Trim(line, " ")
+			h := line
+			p := 80
+			if strings.Contains(line, ":") {
+				hostPort := strings.Split(line, ":")
+				h = hostPort[0]
+				p, _ = strconv.Atoi(hostPort[1])
+			}
+
+			scanHost := fmt.Sprintf("%s:%d", h, p)
+			scanList = append(scanList, scanHost)
 		}
 	}
 
