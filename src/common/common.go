@@ -63,8 +63,10 @@ func ParsePort(portString string) ([]int, error) {
 				portList = append(portList, i)
 			}
 		} else {
-			item, _ := strconv.Atoi(item)
-			portList = append(portList, item)
+			if item != "" {
+				item, _ := strconv.Atoi(item)
+				portList = append(portList, item)
+			}
 		}
 	}
 

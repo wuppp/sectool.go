@@ -1,9 +1,8 @@
 package main
 
 import (
-	. "common"
+	"common"
 	"crypto/tls"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -17,18 +16,19 @@ import (
 )
 
 var (
-	wg             sync.WaitGroup
-	ch             chan bool
-	host           string
-	reqHost        string
-	port           string
-	path           string
-	file           string
-	timeout        int
-	redirect       bool
-	outputJSONFile string
-	goroutineNum   int
-	result         []HttpInfo
+	wg           sync.WaitGroup
+	ch           chan bool
+	host         string
+	reqHost      string
+	port         string
+	path         string
+	file         string
+	timeout      int
+	redirect     bool
+	outputFile   string
+	goroutineNum int
+	result       []HttpInfo
+	f            *os.File
 )
 
 var headers = map[string]string{
@@ -40,12 +40,13 @@ var reqHeaders arrayFlags
 type arrayFlags []string
 
 type HttpInfo struct {
-	StatusCode int    `json:"status_code"`
-	Url        string `json:"url"`
-	Title      string `json:"title"`
-	Server     string `json:"server"`
-	Length     string `json:"length"`
-	Type       string `json:"type"`
+	StatusCode    int    `json:"status_code"`
+	Url           string `json:"url"`
+	Title         string `json:"title"`
+	Server        string `json:"server"`
+	ContentLength string `json:"length"`
+	ContentType   string `json:"type"`
+	XPoweredBy    string `json:xpoweredby`
 }
 
 func (i *arrayFlags) String() string {
@@ -61,10 +62,10 @@ func main() {
 
 	flag.StringVar(&host, "host", "", "scan hosts")
 	flag.IntVar(&timeout, "timeout", 5, "http connect timeout")
-	flag.StringVar(&port, "p", "80", "scan port. Default 80")
+	flag.StringVar(&port, "p", "", "scan port")
 	flag.StringVar(&file, "f", "", "load external file")
-	flag.IntVar(&goroutineNum, "t", 1000, "scan thread number. Default 1000")
-	flag.StringVar(&outputJSONFile, "oJ", "", "save result file")
+	flag.IntVar(&goroutineNum, "t", 500, "scan thread number. Default 500")
+	flag.StringVar(&outputFile, "o", "", "save result file")
 	flag.StringVar(&path, "path", "/", "request path example: /admin")
 	flag.BoolVar(&redirect, "redirect", false, "follow 30x redirect")
 	flag.Var(&reqHeaders, "H", "request headers. exmaple: -H User-Agent: xx -H Referer: xx")
@@ -91,10 +92,10 @@ func main() {
 	}
 
 	scanList := []string{}
+	ipList, _ := common.ParseIP(host)
+	portList, _ := common.ParsePort(port)
 
-	if host != "" && port != "" {
-		ipList, _ := ParseIP(host)
-		portList, _ := ParsePort(port)
+	if len(ipList) != 0 && len(portList) != 0 {
 		for _, host := range ipList {
 			for _, port := range portList {
 				scanHost := fmt.Sprintf("%s:%d", host, port)
@@ -104,25 +105,48 @@ func main() {
 	}
 
 	if file != "" {
-		lines, err := ReadFileLines(file)
+		lines, err := common.ReadFileLines(file)
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
 		}
 
-		for _, line := range lines {
-			line = strings.Trim(line, " ")
-			h := line
-			p := 80
-			if strings.Contains(line, ":") {
-				hostPort := strings.Split(line, ":")
-				h = hostPort[0]
-				p, _ = strconv.Atoi(hostPort[1])
+		if len(portList) != 0 {
+			for _, line := range lines {
+				line = strings.Trim(line, " ")
+				h := line
+				if strings.Contains(line, ":") {
+					hostPort := strings.Split(line, ":")
+					h = hostPort[0]
+				}
+				for _, p := range portList {
+					scanHost := fmt.Sprintf("%s:%d", h, p)
+					scanList = append(scanList, scanHost)
+				}
 			}
 
-			scanHost := fmt.Sprintf("%s:%d", h, p)
-			scanList = append(scanList, scanHost)
+		} else {
+			for _, line := range lines {
+				line = strings.Trim(line, " ")
+				h := line
+				p := 80
+				if strings.Contains(line, ":") {
+					hostPort := strings.Split(line, ":")
+					h = hostPort[0]
+					p, _ = strconv.Atoi(hostPort[1])
+				}
+
+				scanHost := fmt.Sprintf("%s:%d", h, p)
+				scanList = append(scanList, scanHost)
+			}
 		}
+	}
+
+	if outputFile != "" {
+		var err error
+		f, err = os.OpenFile(outputFile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
+		checkError(err)
+		defer f.Close()
 	}
 
 	fmt.Printf("host: %s\n", host)
@@ -130,6 +154,7 @@ func main() {
 	fmt.Printf("path: %s\n", path)
 	fmt.Printf("file: %s\n", file)
 	fmt.Printf("headers:\n")
+
 	for k, v := range headers {
 		fmt.Printf("    %s: %s\n", k, v)
 	}
@@ -154,26 +179,8 @@ func main() {
 	scanDuration := time.Since(startTime)
 	fmt.Printf("scan finished in %v", scanDuration)
 
-	if outputJSONFile != "" {
-		saveResult(result)
-	}
 }
 
-func saveResult([]HttpInfo) {
-	output, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	f, err := os.OpenFile(outputJSONFile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
-	if err != nil {
-		fmt.Println(err)
-	}
-	defer f.Close()
-
-	f.WriteString(string(output))
-
-}
 func fetch(url string) {
 
 	defer func() {
@@ -191,6 +198,10 @@ func fetch(url string) {
 		}
 	}
 	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		// log.Println("")
+	}
+
 	req.Host = reqHost
 	for k, v := range headers {
 		req.Header.Add(k, v)
@@ -222,13 +233,23 @@ func fetch(url string) {
 
 	// 获取响应头Server字段
 	info.Server = resp.Header.Get("Server")
-	info.Length = resp.Header.Get("Content-Length")
-
+	info.ContentLength = resp.Header.Get("Content-Length")
+	info.XPoweredBy = resp.Header.Get("X-Powered-By")
 	pair := strings.SplitN(resp.Header.Get("Content-Type"), ";", 2)
 	if len(pair) == 2 {
-		info.Type = pair[0]
+		info.ContentType = pair[0]
 	}
 
 	result = append(result, *info)
-	fmt.Printf("%-5d %-6s %-16s %-50s %-60s %s\n", info.StatusCode, info.Length, info.Type, info.Url, info.Server, info.Title)
+
+	var line = fmt.Sprintf("%-5d %-6s %-16s %-40s %-20s %-50s %s\n", info.StatusCode, info.ContentLength, info.ContentType, info.Server, info.XPoweredBy, info.Url, info.Title)
+	fmt.Printf(line)
+	f.WriteString(line)
+}
+
+func checkError(err error) {
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Fatal error: %s", err.Error())
+		os.Exit(1)
+	}
 }

@@ -1,7 +1,7 @@
 package main
 
 import (
-	. "common"
+	"common"
 	"flag"
 	"fmt"
 	"net"
@@ -30,7 +30,7 @@ func main() {
 	flag.StringVar(&port, "p", "", "scan port. format: 1-65535 | 21,22,25 | 8080")
 	flag.IntVar(&timeout, "timeout", 2, "http connect timeout")
 	flag.BoolVar(&verbose, "v", false, "show verbose")
-	flag.IntVar(&goroutineNum, "t", 2000, "scan thread number. Default 2000")
+	flag.IntVar(&goroutineNum, "t", 1000, "scan thread number. Default 1000")
 	flag.StringVar(&outputFile, "o", "", "save result file")
 	flag.Parse()
 
@@ -42,8 +42,8 @@ func main() {
 		os.Exit(0)
 	}
 
-	ipList, _ := ParseIP(host)
-	portList, _ := ParsePort(port)
+	ipList, _ := common.ParseIP(host)
+	portList, _ := common.ParsePort(port)
 
 	scanList := []string{}
 	for _, host := range ipList {
@@ -82,7 +82,7 @@ func main() {
 
 func scan(host string, port int) {
 	if isOpen(host, port) {
-		fmt.Printf("%s open\n", ljust(fmt.Sprintf("%s:%d", host, port), 21))
+		fmt.Printf("%-21s open\n", fmt.Sprintf("%s:%d", host, port))
 		f.WriteString(fmt.Sprintf("%s:%d\r\n", host, port))
 	}
 	<-ch
@@ -96,22 +96,6 @@ func isOpen(host string, port int) bool {
 	}
 	conn.Close()
 	return true
-}
-
-func rjust(s string, width int) string {
-	n := width - len(s)
-	if n <= 0 {
-		return s
-	}
-	return strings.Repeat(" ", n) + s
-}
-
-func ljust(s string, width int) string {
-	n := width - len(s)
-	if n <= 0 {
-		return s
-	}
-	return s + strings.Repeat(" ", n)
 }
 
 func checkError(err error) {
