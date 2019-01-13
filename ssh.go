@@ -54,7 +54,7 @@ func main() {
 	
 	ch = make(chan bool, threads)
 
-	if (host == "" && file == "") || (user == "" && userListFile == "") || (pwd == "" && pwdListFile == "") {
+	if (host == "" || port == "") && file == "" || (user == "" && userListFile == "") || (pwd == "" && pwdListFile == "") {
 		flag.Usage()
 		os.Exit(0)
 	}
