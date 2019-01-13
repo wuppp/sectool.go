@@ -13,6 +13,7 @@ ping (批量ping)
 # GOARCH=amd64/386 
 
 $ export GOPATH=`pwd`
+$ go get -u "golang.org/x/crypto/ssh"
 
 $ go build portscan.go
 $ go build httpbanner.go
