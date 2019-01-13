@@ -18,17 +18,20 @@ import (
 var (
 	wg           sync.WaitGroup
 	ch           chan bool
-	host         string
-	reqHost      string
-	port         string
-	path         string
+	
 	file         string
-	timeout      int
-	redirect     bool
-	outputFile   string
-	goroutineNum int
-	result       []HttpInfo
 	f            *os.File
+	reqHost      string
+	path         string
+	redirect     bool
+	result       []HttpInfo
+
+	host         string
+	port         string
+	timeout      int
+	threads      int
+	outputFile   string
+
 )
 
 var headers = map[string]string{
@@ -60,18 +63,31 @@ func (i *arrayFlags) Set(value string) error {
 
 func main() {
 
-	flag.StringVar(&host, "host", "", "scan hosts")
-	flag.IntVar(&timeout, "timeout", 5, "http connect timeout")
-	flag.StringVar(&port, "p", "", "scan port")
-	flag.StringVar(&file, "f", "", "load external file")
-	flag.IntVar(&goroutineNum, "t", 500, "scan thread number. Default 500")
-	flag.StringVar(&outputFile, "o", "", "save result file")
-	flag.StringVar(&path, "path", "/", "request path example: /admin")
+	options := common.PublicOptions
+	flag.StringVar(&path, "path", "/", "request url path. /phpinfo.php | /index.html")
 	flag.BoolVar(&redirect, "redirect", false, "follow 30x redirect")
 	flag.Var(&reqHeaders, "H", "request headers. exmaple: -H User-Agent: xx -H Referer: xx")
 	flag.Parse()
 
-	// prepare request headers
+	host = *options.Host
+	port = *options.Port
+	timeout = *options.Timeout
+	threads = *options.Threads
+	outputFile = *options.OutputFile
+	file = *options.File
+
+	ch = make(chan bool, threads)
+
+	if (host == "" || port == "") && file == "" {
+		flag.Usage()
+		os.Exit(0)
+	}
+
+	ipList, _ := common.ParseIP(host)
+	portList, _ := common.ParsePort(port)
+	scanList := []string{}
+
+	// 处理请求头
 	for _, line := range reqHeaders {
 		pair := strings.SplitN(line, ":", 2)
 		if len(pair) == 2 {
@@ -83,18 +99,6 @@ func main() {
 		}
 	}
 
-	//限制goroutine数量
-	ch = make(chan bool, goroutineNum)
-
-	if host == "" && file == "" {
-		flag.Usage()
-		os.Exit(0)
-	}
-
-	scanList := []string{}
-	ipList, _ := common.ParseIP(host)
-	portList, _ := common.ParsePort(port)
-
 	if len(ipList) != 0 && len(portList) != 0 {
 		for _, host := range ipList {
 			for _, port := range portList {
@@ -102,9 +106,7 @@ func main() {
 				scanList = append(scanList, scanHost)
 			}
 		}
-	}
-
-	if file != "" {
+	} else if file != "" {
 		lines, err := common.ReadFileLines(file)
 		if err != nil {
 			fmt.Println(err)
@@ -124,7 +126,6 @@ func main() {
 					scanList = append(scanList, scanHost)
 				}
 			}
-
 		} else {
 			for _, line := range lines {
 				line = strings.Trim(line, " ")
@@ -145,7 +146,7 @@ func main() {
 	if outputFile != "" {
 		var err error
 		f, err = os.OpenFile(outputFile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
-		checkError(err)
+		common.CheckError(err)
 		defer f.Close()
 	}
 
@@ -153,12 +154,12 @@ func main() {
 	fmt.Printf("port: %s\n", port)
 	fmt.Printf("path: %s\n", path)
 	fmt.Printf("file: %s\n", file)
+	fmt.Printf("redirect: %t\n", redirect)
 	fmt.Printf("headers:\n")
 
 	for k, v := range headers {
 		fmt.Printf("    %s: %s\n", k, v)
 	}
-	fmt.Printf("\n")
 	fmt.Printf("Number of scans: %d\n", len(scanList))
 
 	startTime := time.Now()
@@ -173,20 +174,21 @@ func main() {
 		if port == 443 {
 			url = fmt.Sprintf("https://%s%s", host, path)
 		}
-		go fetch(url)
+		go scan(url)
 	}
 	wg.Wait()
 	scanDuration := time.Since(startTime)
 	fmt.Printf("scan finished in %v", scanDuration)
+}
 
+func scan(url string) {
+	fetch(url)
+	<-ch
+	wg.Done()
 }
 
 func fetch(url string) {
-
-	defer func() {
-		<-ch
-		wg.Done()
-	}()
+	
 	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
 	client := &http.Client{
 		Timeout:   time.Duration(timeout) * time.Second,
@@ -231,7 +233,7 @@ func fetch(url string) {
 		info.Title = m[1]
 	}
 
-	// 获取响应头Server字段
+	// 响应头提取字段
 	info.Server = resp.Header.Get("Server")
 	info.ContentLength = resp.Header.Get("Content-Length")
 	info.XPoweredBy = resp.Header.Get("X-Powered-By")
@@ -242,14 +244,18 @@ func fetch(url string) {
 
 	result = append(result, *info)
 
-	var line = fmt.Sprintf("%-5d %-6s %-16s %-40s %-20s %-50s %s\n", info.StatusCode, info.ContentLength, info.ContentType, info.Server, info.XPoweredBy, info.Url, info.Title)
-	fmt.Printf(line)
+	var line = fmt.Sprintf("%-5d %-6s %-16s %-55s %-20s %-50s %s\n", info.StatusCode, info.ContentLength, info.ContentType, info.Server, info.XPoweredBy, info.Url, info.Title)
+	statusCode := strconv.Itoa(info.StatusCode)
+	if strings.HasPrefix(statusCode, "2") {
+		fmt.Printf("\033[0;32m%s\033[0m", line)
+	} else if strings.HasPrefix(statusCode, "4") {
+		fmt.Printf("\033[0;33m%s\033[0m", line)
+	} else if strings.HasPrefix(statusCode, "5") {
+		fmt.Printf("\033[0;31m%s\033[0m", line)
+	} else {
+		fmt.Printf(line)
+	}
 	f.WriteString(line)
 }
 
-func checkError(err error) {
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Fatal error: %s", err.Error())
-		os.Exit(1)
-	}
-}
+

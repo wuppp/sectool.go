@@ -17,22 +17,30 @@ import (
 var (
 	wg           sync.WaitGroup
 	ch           chan bool
-	host         string
-	timeout      int
-	goroutineNum int
-	args         []string
-	outputFile   string
+	
 	f            *os.File
+	args         []string
+	
+	host         string
+	port         string
+	timeout      int
+	threads      int
+	outputFile   string
 )
 
+
 func main() {
-	flag.StringVar(&host, "host", "", "scan host. format: 127.0.0.1 | 192.168.1.1/24 | 192.168.1.1-5")
-	flag.IntVar(&timeout, "timeout", 2, "ping connect timeout")
-	flag.IntVar(&goroutineNum, "t", 100, "scan thread number. Default 100")
-	flag.StringVar(&outputFile, "o", "", "save result file")
+	
+	options := common.PublicOptions
 	flag.Parse()
 
-	ch = make(chan bool, goroutineNum)
+	host = *options.Host
+	port = *options.Port
+	timeout = *options.Timeout
+	threads = *options.Threads
+	outputFile = *options.OutputFile
+
+	ch = make(chan bool, threads)
 
 	if host == "" {
 		flag.Usage()
@@ -53,7 +61,7 @@ func main() {
 	if outputFile != "" {
 		var err error
 		f, err = os.OpenFile(outputFile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
-		checkError(err)
+		common.CheckError(err)
 		defer f.Close()
 	}
 
@@ -85,7 +93,7 @@ func run(ip string) (bool, string) {
 	cmd := exec.Command("ping", pingArgs...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		// log.Printf("cmd.Run() failed with %s\n", err)
+		// fmt.Printf("cmd.Run() failed with %s\n", err)
 	}
 
 	if strings.Contains(strings.ToLower(string(out)), "ttl") {
@@ -99,9 +107,3 @@ func run(ip string) (bool, string) {
 	return false, ""
 }
 
-func checkError(err error) {
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Fatal error: %s", err.Error())
-		os.Exit(1)
-	}
-}

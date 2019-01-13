@@ -1,19 +1,19 @@
 # sectool.go
 
+## tools
 ```
-# export GOPATH=`pwd`
-```
-
-### portscan
-```
-# cd portscan
-# go build portscan.go
+portscan (tcp端口扫描)
+httpbannerscan (扫描httpbanner)
+ping (批量ping)
 ```
 
-### httpbanner
-```
-# cd httpbanner
-# go build httpbanner.go
-```
+## build
+```bash
+# GOOS=windows/linux/darwin
+# GOARCH=amd64/386 
 
+$ export GOPATH=`pwd`
 
+$ go build portscan.go
+$ go build httpbanner.go
+```

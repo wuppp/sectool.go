@@ -15,27 +15,29 @@ import (
 var (
 	wg           sync.WaitGroup
 	ch           chan bool
+	
+	f            *os.File
+	
 	host         string
 	port         string
 	timeout      int
-	verbose      bool
+	threads      int
 	outputFile   string
-	goroutineNum int
-	f            *os.File
 )
+
 
 func main() {
 
-	flag.StringVar(&host, "host", "", "scan host. format: 127.0.0.1 | 192.168.1.1/24 | 192.168.1.1-5")
-	flag.StringVar(&port, "p", "", "scan port. format: 1-65535 | 21,22,25 | 8080")
-	flag.IntVar(&timeout, "timeout", 2, "http connect timeout")
-	flag.BoolVar(&verbose, "v", false, "show verbose")
-	flag.IntVar(&goroutineNum, "t", 1000, "scan thread number. Default 1000")
-	flag.StringVar(&outputFile, "o", "", "save result file")
+	options := common.PublicOptions
 	flag.Parse()
 
-	//限制goroutine数量
-	ch = make(chan bool, goroutineNum)
+	host = *options.Host
+	port = *options.Port
+	timeout = *options.Timeout
+	threads = *options.Threads
+	outputFile = *options.OutputFile
+	
+	ch = make(chan bool, threads)
 
 	if host == "" || port == "" {
 		flag.Usage()
@@ -44,8 +46,8 @@ func main() {
 
 	ipList, _ := common.ParseIP(host)
 	portList, _ := common.ParsePort(port)
-
 	scanList := []string{}
+	
 	for _, host := range ipList {
 		for _, port := range portList {
 			scanHost := fmt.Sprintf("%s:%d", host, port)
@@ -56,7 +58,7 @@ func main() {
 	if outputFile != "" {
 		var err error
 		f, err = os.OpenFile(outputFile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
-		checkError(err)
+		common.CheckError(err)
 		defer f.Close()
 	}
 
@@ -96,11 +98,4 @@ func isOpen(host string, port int) bool {
 	}
 	conn.Close()
 	return true
-}
-
-func checkError(err error) {
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Fatal error: %s", err.Error())
-		os.Exit(1)
-	}
 }
