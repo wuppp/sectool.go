@@ -5,6 +5,7 @@
 portscan (tcp端口扫描)
 httpbannerscan (扫描httpbanner)
 ping (批量ping)
+ssh (ssh爆破)
 ```
 
 ## build
