@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"common"
 	"crypto/tls"
 	"flag"
@@ -13,6 +14,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/net/html/charset"
+	"golang.org/x/text/encoding"
+	"golang.org/x/text/encoding/unicode"
+	"golang.org/x/text/transform"
 )
 
 var (
@@ -25,6 +31,7 @@ var (
 	path       string
 	redirect   bool
 	grepString string
+	code       int
 	result     []HttpInfo
 
 	host       string
@@ -68,6 +75,7 @@ func main() {
 	flag.BoolVar(&redirect, "redirect", false, "follow 30x redirect")
 	flag.Var(&reqHeaders, "H", "request headers. exmaple: -H User-Agent: xx -H Referer: xx")
 	flag.StringVar(&grepString, "grep", "", "response body grep string. -grep phpinfo")
+	flag.IntVar(&code, "code", 0, "response status code grep. -code 200")
 	flag.Parse()
 
 	host = *options.Host
@@ -157,6 +165,7 @@ func main() {
 	fmt.Printf("file: %s\n", file)
 	fmt.Printf("redirect: %t\n", redirect)
 	fmt.Printf("grep: %s\n", grepString)
+	fmt.Printf("code: %d\n", code)
 	fmt.Printf("headers:\n")
 
 	for k, v := range headers {
@@ -187,6 +196,16 @@ func scan(url string) {
 	fetch(url)
 	<-ch
 	wg.Done()
+}
+
+func determineEncoding(r *bufio.Reader) encoding.Encoding {
+	b, err := r.Peek(1024)
+	if err != nil {
+		// log.Error("get code error")
+		return unicode.UTF8
+	}
+	e, _, _ := charset.DetermineEncoding(b, "")
+	return e
 }
 
 func fetch(url string) {
@@ -222,8 +241,13 @@ func fetch(url string) {
 	info.Url = url
 	info.StatusCode = resp.StatusCode
 
+	// 获取编码
+	reader := bufio.NewReader(resp.Body)
+	e := determineEncoding(reader)
+	utf8Reader := transform.NewReader(reader, e.NewDecoder())
+
 	// 获取标题
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := ioutil.ReadAll(utf8Reader)
 	if err != nil {
 		// log.Println("ioutil.ReadAll", err.Error())
 		return
@@ -243,14 +267,16 @@ func fetch(url string) {
 	if len(pair) == 2 {
 		info.ContentType = pair[0]
 	}
-
 	result = append(result, *info)
 
-	if strings.Contains(respBody, grepString) {
+	statusCode := strconv.Itoa(info.StatusCode)
+
+	if strings.Contains(respBody, grepString) && (code == 0 || strings.HasPrefix(statusCode, strconv.Itoa(code))) {
 		var line = fmt.Sprintf("%-5d %-6s %-16s %-55s %-20s %-50s %s\n", info.StatusCode, info.ContentLength, info.ContentType, info.Server, info.XPoweredBy, info.Url, info.Title)
-		statusCode := strconv.Itoa(info.StatusCode)
 		if strings.HasPrefix(statusCode, "2") {
 			fmt.Printf("\033[0;32m%s\033[0m", line)
+		} else if strings.HasPrefix(statusCode, "3") {
+			fmt.Printf("\033[0;35m%s\033[0m", line)
 		} else if strings.HasPrefix(statusCode, "4") {
 			fmt.Printf("\033[0;33m%s\033[0m", line)
 		} else if strings.HasPrefix(statusCode, "5") {

