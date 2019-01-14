@@ -13,18 +13,17 @@ import (
 )
 
 var (
-	wg           sync.WaitGroup
-	ch           chan bool
-	
-	f            *os.File
-	
-	host         string
-	port         string
-	timeout      int
-	threads      int
-	outputFile   string
-)
+	wg sync.WaitGroup
+	ch chan bool
 
+	f *os.File
+
+	host       string
+	port       string
+	timeout    int
+	threads    int
+	outputFile string
+)
 
 func main() {
 
@@ -36,7 +35,7 @@ func main() {
 	timeout = *options.Timeout
 	threads = *options.Threads
 	outputFile = *options.OutputFile
-	
+
 	ch = make(chan bool, threads)
 
 	if host == "" || port == "" {
@@ -47,7 +46,7 @@ func main() {
 	ipList, _ := common.ParseIP(host)
 	portList, _ := common.ParsePort(port)
 	scanList := []string{}
-	
+
 	for _, host := range ipList {
 		for _, port := range portList {
 			scanHost := fmt.Sprintf("%s:%d", host, port)

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"common"
 	"flag"
 	"fmt"
@@ -10,29 +11,29 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"bytes"
+
 	"golang.org/x/crypto/ssh"
 )
 
 var (
-	wg           sync.WaitGroup
-	ch           chan bool
-	
+	wg sync.WaitGroup
+	ch chan bool
+
 	file         string
 	f            *os.File
 	command      string
-	user     	 string
+	user         string
 	pwd          string
 	userListFile string
 	pwdListFile  string
 	userList     []string
 	pwdList      []string
-	
-	host         string
-	port         string
-	timeout      int
-	threads      int
-	outputFile   string
+
+	host       string
+	port       string
+	timeout    int
+	threads    int
+	outputFile string
 )
 
 func main() {
@@ -51,7 +52,7 @@ func main() {
 	threads = *options.Threads
 	outputFile = *options.OutputFile
 	file = *options.File
-	
+
 	ch = make(chan bool, threads)
 
 	if (host == "" || port == "") && file == "" || (user == "" && userListFile == "") || (pwd == "" && pwdListFile == "") {
@@ -66,7 +67,7 @@ func main() {
 	} else if user != "" {
 		userList = append(userList, user)
 	}
-	
+
 	if pwdListFile != "" {
 		pwdList, _ = common.ReadFileLines(pwdListFile)
 	} else if pwd != "" {
@@ -135,7 +136,7 @@ func main() {
 	fmt.Printf("userFile: %s\n", userListFile)
 	fmt.Printf("pwdFile: %s\n", pwdListFile)
 	fmt.Printf("Number of scans: %d\n", len(scanList))
-	
+
 	startTime := time.Now()
 	for _, line := range scanList {
 		ch <- true
@@ -160,19 +161,19 @@ func scan(ip string, port int) {
 	for _, username := range userList {
 		for _, password := range pwdList {
 			if isLogin, client := sshLogin(ip, port, username, password); isLogin {
-				
+
 				fmt.Printf("[+][log] %s:%d %s %s\n", ip, port, username, password)
 				output, err := sshExec(client, command)
 				if err != nil {
 					fmt.Println("Failed to exec: " + err.Error())
 				}
 				fmt.Printf("[+][cmd] %s:%d %s", ip, port, output)
-				
+
 				var line = fmt.Sprintf("%s:%d %s %s\n", ip, port, username, password)
 				f.WriteString(line)
-				
+
 				return
-				
+
 			} else {
 				// fmt.Printf("[-] %s:%d %s %s\n", ip, port, username, password)
 			}
@@ -190,13 +191,12 @@ func sshExec(client *ssh.Client, cmd string) (string, error) {
 	defer client.Close()
 
 	var stdoutBuf bytes.Buffer
-    session.Stdout = &stdoutBuf
-  	session.Stderr = os.Stderr
+	session.Stdout = &stdoutBuf
+	session.Stderr = os.Stderr
 	session.Run(cmd)
-	
+
 	return stdoutBuf.String(), nil
 }
-
 
 func sshLogin(ip string, port int, username string, password string) (bool, *ssh.Client) {
 

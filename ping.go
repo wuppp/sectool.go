@@ -15,22 +15,21 @@ import (
 )
 
 var (
-	wg           sync.WaitGroup
-	ch           chan bool
-	
-	f            *os.File
-	args         []string
-	
-	host         string
-	port         string
-	timeout      int
-	threads      int
-	outputFile   string
+	wg sync.WaitGroup
+	ch chan bool
+
+	f    *os.File
+	args []string
+
+	host       string
+	port       string
+	timeout    int
+	threads    int
+	outputFile string
 )
 
-
 func main() {
-	
+
 	options := common.PublicOptions
 	flag.Parse()
 
@@ -106,4 +105,3 @@ func run(ip string) (bool, string) {
 	}
 	return false, ""
 }
-

@@ -16,22 +16,22 @@ import (
 )
 
 var (
-	wg           sync.WaitGroup
-	ch           chan bool
-	
-	file         string
-	f            *os.File
-	reqHost      string
-	path         string
-	redirect     bool
-	result       []HttpInfo
+	wg sync.WaitGroup
+	ch chan bool
 
-	host         string
-	port         string
-	timeout      int
-	threads      int
-	outputFile   string
+	file       string
+	f          *os.File
+	reqHost    string
+	path       string
+	redirect   bool
+	grepString string
+	result     []HttpInfo
 
+	host       string
+	port       string
+	timeout    int
+	threads    int
+	outputFile string
 )
 
 var headers = map[string]string{
@@ -67,6 +67,7 @@ func main() {
 	flag.StringVar(&path, "path", "/", "request url path. /phpinfo.php | /index.html")
 	flag.BoolVar(&redirect, "redirect", false, "follow 30x redirect")
 	flag.Var(&reqHeaders, "H", "request headers. exmaple: -H User-Agent: xx -H Referer: xx")
+	flag.StringVar(&grepString, "grep", "", "response body grep string. -grep phpinfo")
 	flag.Parse()
 
 	host = *options.Host
@@ -155,6 +156,7 @@ func main() {
 	fmt.Printf("path: %s\n", path)
 	fmt.Printf("file: %s\n", file)
 	fmt.Printf("redirect: %t\n", redirect)
+	fmt.Printf("grep: %s\n", grepString)
 	fmt.Printf("headers:\n")
 
 	for k, v := range headers {
@@ -188,7 +190,7 @@ func scan(url string) {
 }
 
 func fetch(url string) {
-	
+
 	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
 	client := &http.Client{
 		Timeout:   time.Duration(timeout) * time.Second,
@@ -244,18 +246,19 @@ func fetch(url string) {
 
 	result = append(result, *info)
 
-	var line = fmt.Sprintf("%-5d %-6s %-16s %-55s %-20s %-50s %s\n", info.StatusCode, info.ContentLength, info.ContentType, info.Server, info.XPoweredBy, info.Url, info.Title)
-	statusCode := strconv.Itoa(info.StatusCode)
-	if strings.HasPrefix(statusCode, "2") {
-		fmt.Printf("\033[0;32m%s\033[0m", line)
-	} else if strings.HasPrefix(statusCode, "4") {
-		fmt.Printf("\033[0;33m%s\033[0m", line)
-	} else if strings.HasPrefix(statusCode, "5") {
-		fmt.Printf("\033[0;31m%s\033[0m", line)
-	} else {
-		fmt.Printf(line)
+	if strings.Contains(respBody, grepString) {
+		var line = fmt.Sprintf("%-5d %-6s %-16s %-55s %-20s %-50s %s\n", info.StatusCode, info.ContentLength, info.ContentType, info.Server, info.XPoweredBy, info.Url, info.Title)
+		statusCode := strconv.Itoa(info.StatusCode)
+		if strings.HasPrefix(statusCode, "2") {
+			fmt.Printf("\033[0;32m%s\033[0m", line)
+		} else if strings.HasPrefix(statusCode, "4") {
+			fmt.Printf("\033[0;33m%s\033[0m", line)
+		} else if strings.HasPrefix(statusCode, "5") {
+			fmt.Printf("\033[0;31m%s\033[0m", line)
+		} else {
+			fmt.Printf(line)
+		}
+		f.WriteString(line)
 	}
-	f.WriteString(line)
+
 }
-
-
