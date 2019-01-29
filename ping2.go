@@ -1,7 +1,6 @@
 package main
 
 import (
-	"common"
 	"flag"
 	"fmt"
 	"os"
@@ -12,12 +11,15 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"sectool.go/common"
 )
 
 var (
 	wg sync.WaitGroup
 	ch chan bool
 
+	file string
 	f    *os.File
 	args []string
 
@@ -38,10 +40,11 @@ func main() {
 	timeout = *options.Timeout
 	threads = *options.Threads
 	outputFile = *options.OutputFile
+	file = *options.File
 
 	ch = make(chan bool, threads)
 
-	if host == "" {
+	if host == "" && file == "" {
 		flag.Usage()
 		os.Exit(0)
 	}
@@ -64,7 +67,12 @@ func main() {
 		defer f.Close()
 	}
 
-	ipList, _ := common.ParseIP(host)
+	var ipList []string
+	if host != "" {
+		ipList, _ = common.ParseIP(host)
+	} else if file != "" {
+		ipList, _ = common.ReadFileLines(file)
+	}
 
 	startTime := time.Now()
 	for _, ip := range ipList {

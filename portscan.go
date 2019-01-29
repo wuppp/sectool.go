@@ -1,7 +1,6 @@
 package main
 
 import (
-	"common"
 	"flag"
 	"fmt"
 	"net"
@@ -10,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"sectool.go/common"
 )
 
 var (

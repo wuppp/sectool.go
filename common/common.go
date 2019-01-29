@@ -38,7 +38,7 @@ func ljust(s string, width int) string {
 	return s + strings.Repeat(" ", n)
 }
 
-func isValidIPV4(ip string) bool {
+func IsValidIPV4(ip string) bool {
 	b := net.ParseIP(ip)
 	if b.To4() == nil {
 		return false
@@ -162,6 +162,24 @@ func isStartingIPLower(start, end net.IP) bool {
 		}
 	}
 	return true
+}
+
+func ParseLines(l []string) []string {
+	var lines []string
+	for _, line := range l {
+		ips, _ := ParseIP(line)
+		if len(ips) != 0 {
+			for _, ip := range ips {
+				lines = append(lines, ip)
+			}
+		} else {
+			// ips, err := GetIPByHost(line)
+			// if err != nil && len(ips) != 0 {
+			// }
+			lines = append(lines, line)
+		}
+	}
+	return lines
 }
 
 // ReadFileLines returns all the lines in a file.

@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"common"
 	"crypto/tls"
 	"flag"
 	"fmt"
@@ -10,10 +9,13 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"sectool.go/common"
 
 	"golang.org/x/net/html/charset"
 	"golang.org/x/text/encoding"
@@ -121,6 +123,7 @@ func main() {
 			fmt.Println(err)
 			os.Exit(1)
 		}
+		lines = common.ParseLines(lines)
 
 		if len(portList) != 0 {
 			for _, line := range lines {
@@ -273,16 +276,20 @@ func fetch(url string) {
 
 	if strings.Contains(respBody, grepString) && (code == 0 || strings.HasPrefix(statusCode, strconv.Itoa(code))) {
 		var line = fmt.Sprintf("%-5d %-6s %-16s %-55s %-20s %-50s %s\n", info.StatusCode, info.ContentLength, info.ContentType, info.Server, info.XPoweredBy, info.Url, info.Title)
-		if strings.HasPrefix(statusCode, "2") {
-			fmt.Printf("\033[0;32m%s\033[0m", line)
-		} else if strings.HasPrefix(statusCode, "3") {
-			fmt.Printf("\033[0;35m%s\033[0m", line)
-		} else if strings.HasPrefix(statusCode, "4") {
-			fmt.Printf("\033[0;33m%s\033[0m", line)
-		} else if strings.HasPrefix(statusCode, "5") {
-			fmt.Printf("\033[0;31m%s\033[0m", line)
-		} else {
+		if runtime.GOOS == "windows" {
 			fmt.Printf(line)
+		} else {
+			if strings.HasPrefix(statusCode, "2") {
+				fmt.Printf("\033[0;32m%s\033[0m", line)
+			} else if strings.HasPrefix(statusCode, "3") {
+				fmt.Printf("\033[0;35m%s\033[0m", line)
+			} else if strings.HasPrefix(statusCode, "4") {
+				fmt.Printf("\033[0;33m%s\033[0m", line)
+			} else if strings.HasPrefix(statusCode, "5") {
+				fmt.Printf("\033[0;31m%s\033[0m", line)
+			} else {
+				fmt.Printf(line)
+			}
 		}
 		f.WriteString(line)
 	}

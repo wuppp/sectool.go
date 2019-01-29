@@ -2,17 +2,19 @@ package main
 
 import (
 	"bytes"
-	"common"
+	"database/sql"
 	"flag"
 	"fmt"
-	"net"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"golang.org/x/crypto/ssh"
+	"sectool.go/common"
+
+	_ "github.com/go-sql-driver/mysql"
+	"github.com/olekukonko/tablewriter"
 )
 
 var (
@@ -43,7 +45,7 @@ func main() {
 	flag.StringVar(&pwd, "pwd", "", "password")
 	flag.StringVar(&userListFile, "uF", "", "username file path")
 	flag.StringVar(&pwdListFile, "pF", "", "password file path")
-	flag.StringVar(&command, "command", "id", "password file path")
+	flag.StringVar(&command, "command", "select version();", "password file path")
 	flag.Parse()
 
 	host = *options.Host
@@ -108,7 +110,7 @@ func main() {
 			for _, line := range lines {
 				line = strings.Trim(line, " ")
 				h := line
-				p := 22
+				p := 3306
 				if strings.Contains(line, ":") {
 					hostPort := strings.Split(line, ":")
 					h = hostPort[0]
@@ -160,56 +162,115 @@ func scan(ip string, port int) {
 
 	for _, username := range userList {
 		for _, password := range pwdList {
-			if isLogin, client := sshLogin(ip, port, username, password); isLogin {
+			if isLogin, client, err := mysqlConnect(ip, port, username, password); isLogin {
 
 				var line = fmt.Sprintf("%s:%d %s %s\n", ip, port, username, password)
 				f.WriteString(line)
 				fmt.Printf("\033[0;32m[log] %s:%d %s %s\033[0m\n", ip, port, username, password)
 
-				output, err := sshExec(client, command)
+				output, err := mysqlExec(client, command)
 				if err != nil {
 					fmt.Println("Failed to exec: " + err.Error())
 				}
-				fmt.Printf("\033[0;32m[cmd] %s:%d \n%s\033[0m", ip, port, output)
+				fmt.Printf("\033[0;32m[sql] %s:%d \n%s\033[0m", ip, port, output)
 				return
 			} else {
 				// fmt.Printf("[err] %s:%d %s %s\n", ip, port, username, password)
+				fmt.Println(ip, port, err)
+				// if strings.HasPrefix(err.Error(), "Error ") {
+				// 	errMsg := strings.SplitN(err.Error(), ":", 2)
+				// 	fmt.Printf("[err] %s\n", strings.Trim(errMsg[1], " "))
+				// }
 			}
 		}
 	}
 }
 
-func sshLogin(ip string, port int, username string, password string) (bool, *ssh.Client) {
+func mysqlConnect(ip string, port int, username string, password string) (bool, *sql.DB, error) {
 
-	clientConfig := &ssh.ClientConfig{
-		Timeout: time.Duration(timeout) * time.Second,
-		User:    username,
-		Auth:    []ssh.AuthMethod{ssh.Password(password)},
-		HostKeyCallback: func(hostname string, remote net.Addr, key ssh.PublicKey) error {
-			return nil
-		}}
+	DSN := fmt.Sprintf("%s:%s@tcp(%s:%d)/?charset=utf8&timeout=%ds", username, password, ip, port, timeout)
+	db, err := sql.Open("mysql", DSN)
 
-	conn, err := ssh.Dial("tcp", fmt.Sprintf("%s:%d", ip, port), clientConfig)
 	if err != nil {
-		//fmt.Println("Failed to dial: " + err.Error())
-		return false, nil
+		return false, nil, err
 	}
-	return true, conn
+
+	err = db.Ping()
+	if err != nil {
+		db.Close()
+		// fmt.Println("Connect Error", err)
+		return false, nil, err
+	}
+
+	return true, db, nil
 }
 
-func sshExec(client *ssh.Client, cmd string) (string, error) {
+func mysqlExec(db *sql.DB, sqlStr string) (string, error) {
 
-	session, err := client.NewSession()
+	defer db.Close()
+
+	// Execute the query
+	rows, err := db.Query(sqlStr)
 	if err != nil {
-		return "", err
+		panic(err.Error()) // proper error handling instead of panic in your app
 	}
-	defer session.Close()
-	defer client.Close()
 
-	var stdoutBuf bytes.Buffer
-	session.Stdout = &stdoutBuf
-	session.Stderr = os.Stderr
-	session.Run(cmd)
+	// Get column names
+	columns, err := rows.Columns()
+	if err != nil {
+		panic(err.Error()) // proper error handling instead of panic in your app
+	}
 
-	return stdoutBuf.String(), nil
+	// Make a slice for the values
+	values := make([]sql.RawBytes, len(columns))
+
+	// rows.Scan wants '[]interface{}' as an argument, so we must copy the
+	// references into such a slice
+	// See http://code.google.com/p/go-wiki/wiki/InterfaceSlice for details
+	scanArgs := make([]interface{}, len(values))
+	for i := range values {
+		scanArgs[i] = &values[i]
+	}
+
+	buf := new(bytes.Buffer)
+	table := tablewriter.NewWriter(buf)
+	table.SetHeader(columns)
+	// table.SetCaption(true, "Movie ratings.")
+
+	var data [][]string
+	// Fetch rows
+	for rows.Next() {
+		// get RawBytes from data
+		err = rows.Scan(scanArgs...)
+		if err != nil {
+			panic(err.Error()) // proper error handling instead of panic in your app
+		}
+
+		// Now do something with the data.
+		// Here we just print each column as a string.
+
+		var v []string
+		var value string
+		for _, col := range values {
+			// Here we can check if the value is nil (NULL value)
+			if col == nil {
+				value = "NULL"
+			} else {
+				value = string(col)
+			}
+			v = append(v, value)
+		}
+		data = append(data, v)
+	}
+
+	for _, v := range data {
+		table.Append(v)
+	}
+	table.Render() // Send output
+	return buf.String(), nil
+
+	if err = rows.Err(); err != nil {
+		panic(err.Error()) // proper error handling instead of panic in your app
+	}
+	return "", err
 }
