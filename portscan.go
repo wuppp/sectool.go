@@ -62,9 +62,7 @@ func main() {
 		defer f.Close()
 	}
 
-	fmt.Printf("host: %s\n", host)
-	fmt.Printf("port: %s\n", port)
-	fmt.Printf("Number of scans: %d\n", len(scanList))
+	common.PrintInfo(scanList)
 
 	startTime := time.Now()
 	for _, line := range scanList {

@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
+	"io/ioutil"
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -13,6 +15,7 @@ import (
 
 	"sectool.go/common"
 
+	"github.com/go-sql-driver/mysql"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/olekukonko/tablewriter"
 )
@@ -38,6 +41,12 @@ var (
 	outputFile string
 )
 
+func init() {
+	// disbaled mysql package log
+	silent := log.New(ioutil.Discard, "", 0)
+	mysql.SetLogger(silent)
+}
+
 func main() {
 
 	options := common.PublicOptions
@@ -62,8 +71,6 @@ func main() {
 		os.Exit(0)
 	}
 
-	scanList := []string{}
-
 	if userListFile != "" {
 		userList, _ = common.ReadFileLines(userListFile)
 	} else if user != "" {
@@ -78,6 +85,7 @@ func main() {
 
 	ipList, _ := common.ParseIP(host)
 	portList, _ := common.ParsePort(port)
+	scanList := []string{}
 
 	if len(ipList) != 0 && len(portList) != 0 {
 		for _, host := range ipList {
@@ -130,14 +138,7 @@ func main() {
 		defer f.Close()
 	}
 
-	fmt.Printf("host: %s\n", host)
-	fmt.Printf("port: %s\n", port)
-	fmt.Printf("file: %s\n", file)
-	fmt.Printf("user: %s\n", user)
-	fmt.Printf("pwd: %s\n", pwd)
-	fmt.Printf("userFile: %s\n", userListFile)
-	fmt.Printf("pwdFile: %s\n", pwdListFile)
-	fmt.Printf("Number of scans: %d\n", len(scanList))
+	common.PrintInfo(scanList)
 
 	startTime := time.Now()
 	for _, line := range scanList {
@@ -175,12 +176,10 @@ func scan(ip string, port int) {
 				fmt.Printf("\033[0;32m[sql] %s:%d \n%s\033[0m", ip, port, output)
 				return
 			} else {
-				// fmt.Printf("[err] %s:%d %s %s\n", ip, port, username, password)
-				fmt.Println(ip, port, err)
-				// if strings.HasPrefix(err.Error(), "Error ") {
-				// 	errMsg := strings.SplitN(err.Error(), ":", 2)
-				// 	fmt.Printf("[err] %s\n", strings.Trim(errMsg[1], " "))
-				// }
+				if strings.HasPrefix(err.Error(), "Error ") {
+					// 	errMsg := strings.SplitN(err.Error(), ":", 2)
+					// 	fmt.Printf("[err] %s\n", strings.Trim(errMsg[1], " "))
+				}
 			}
 		}
 	}

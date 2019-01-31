@@ -6,7 +6,9 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"runtime"
@@ -27,14 +29,19 @@ var (
 	wg sync.WaitGroup
 	ch chan bool
 
-	file       string
-	f          *os.File
-	reqHost    string
-	path       string
-	redirect   bool
-	grepString string
-	code       int
-	result     []HttpInfo
+	file         string
+	f            *os.File
+	reqHost      string
+	method       string
+	body         string
+	path         string
+	redirect     bool
+	grepString   string
+	filterString string
+	code         int
+	proxies      string
+	result       []HttpInfo
+	tr           *http.Transport
 
 	host       string
 	port       string
@@ -61,8 +68,12 @@ type HttpInfo struct {
 	XPoweredBy    string `json:xpoweredby`
 }
 
+func (i *HttpInfo) String() string {
+	return fmt.Sprintf("%d%s%s%s%s%s%s", i.StatusCode, i.Url, i.Title, i.Server, i.ContentLength, i.ContentType, i.XPoweredBy)
+}
+
 func (i *arrayFlags) String() string {
-	return "my string representation"
+	return strings.Join(*i, ", ")
 }
 
 func (i *arrayFlags) Set(value string) error {
@@ -70,14 +81,75 @@ func (i *arrayFlags) Set(value string) error {
 	return nil
 }
 
+func validMethod(method string) bool {
+	/*
+	     Method         = "OPTIONS"                ; Section 9.2
+	                    | "GET"                    ; Section 9.3
+	                    | "HEAD"                   ; Section 9.4
+	                    | "POST"                   ; Section 9.5
+	                    | "PUT"                    ; Section 9.6
+	                    | "DELETE"                 ; Section 9.7
+	                    | "TRACE"                  ; Section 9.8
+	                    | "CONNECT"                ; Section 9.9
+	                    | extension-method
+	   extension-method = token
+	     token          = 1*<any CHAR except CTLs or separators>
+	*/
+	methods := []string{"OPTIONS", "GET", "HEAD", "POST", "PUT", "DELETE", "TRACE", "CONNECT"}
+	for _, m := range methods {
+		if m == method {
+			return true
+		}
+	}
+	return false
+}
+
+func determineEncoding(r *bufio.Reader) encoding.Encoding {
+	b, err := r.Peek(1024)
+	if err != nil {
+		// log.Error("get code error")
+		return unicode.UTF8
+	}
+	e, _, _ := charset.DetermineEncoding(b, "")
+	return e
+}
+
+func getProxyURL(proxyStr string) *url.URL {
+	//creating the proxyURL
+	proxyURL, err := url.Parse(proxyStr)
+	if err != nil {
+		log.Println(err)
+	}
+	return proxyURL
+}
+
+func getTransport() *http.Transport {
+	// 不校验证书
+	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+	// 配置代理
+	if proxies != "" {
+		proxyURL := getProxyURL(proxies)
+		tr.Proxy = http.ProxyURL(proxyURL)
+	}
+	return tr
+}
+func init() {
+	// 408 log
+	log.SetOutput(ioutil.Discard)
+}
+
 func main() {
 
 	options := common.PublicOptions
-	flag.StringVar(&path, "path", "/", "request url path. /phpinfo.php | /index.html")
+	flag.StringVar(&method, "method", "GET", "request method. -method GET | POST ...")
+	flag.StringVar(&body, "body", "", "post body. -body a=1&b=2")
+	flag.StringVar(&path, "path", "/", "request url path. -path /phpinfo.php | /index.html")
 	flag.BoolVar(&redirect, "redirect", false, "follow 30x redirect")
 	flag.Var(&reqHeaders, "H", "request headers. exmaple: -H User-Agent: xx -H Referer: xx")
 	flag.StringVar(&grepString, "grep", "", "response body grep string. -grep phpinfo")
+	flag.StringVar(&filterString, "filter", "", "response grep string. -filter Apache")
 	flag.IntVar(&code, "code", 0, "response status code grep. -code 200")
+	flag.StringVar(&proxies, "x", "", "set request proxy. -x socks://127.0.0.1:1080 | http://127.0.0.1:1086")
 	flag.Parse()
 
 	host = *options.Host
@@ -88,6 +160,14 @@ func main() {
 	file = *options.File
 
 	ch = make(chan bool, threads)
+	method = strings.ToUpper(method)
+	tr = getTransport()
+
+	// 检查是否合法请求方法
+	if !validMethod(method) {
+		fmt.Printf("net/http: invalid method %q", method)
+		os.Exit(0)
+	}
 
 	if (host == "" || port == "") && file == "" {
 		flag.Usage()
@@ -162,19 +242,8 @@ func main() {
 		defer f.Close()
 	}
 
-	fmt.Printf("host: %s\n", host)
-	fmt.Printf("port: %s\n", port)
-	fmt.Printf("path: %s\n", path)
-	fmt.Printf("file: %s\n", file)
-	fmt.Printf("redirect: %t\n", redirect)
-	fmt.Printf("grep: %s\n", grepString)
-	fmt.Printf("code: %d\n", code)
-	fmt.Printf("headers:\n")
-
-	for k, v := range headers {
-		fmt.Printf("    %s: %s\n", k, v)
-	}
-	fmt.Printf("Number of scans: %d\n", len(scanList))
+	// 打印所有参数
+	common.PrintInfo(scanList)
 
 	startTime := time.Now()
 	for _, line := range scanList {
@@ -201,19 +270,8 @@ func scan(url string) {
 	wg.Done()
 }
 
-func determineEncoding(r *bufio.Reader) encoding.Encoding {
-	b, err := r.Peek(1024)
-	if err != nil {
-		// log.Error("get code error")
-		return unicode.UTF8
-	}
-	e, _, _ := charset.DetermineEncoding(b, "")
-	return e
-}
-
 func fetch(url string) {
 
-	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
 	client := &http.Client{
 		Timeout:   time.Duration(timeout) * time.Second,
 		Transport: tr,
@@ -223,14 +281,25 @@ func fetch(url string) {
 			return http.ErrUseLastResponse
 		}
 	}
-	req, err := http.NewRequest("GET", url, nil)
+
+	var req *http.Request
+	var err error
+
+	if method == http.MethodPost || (method == "GET" && body != "") {
+		req, err = http.NewRequest(http.MethodPost, url, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
+	} else if method == http.MethodPut {
+		req, err = http.NewRequest(method, url, strings.NewReader(body))
+	} else {
+		req, err = http.NewRequest(method, url, nil)
+	}
 	if err != nil {
-		// log.Println("")
+		// log.Println(err)
 	}
 
 	req.Host = reqHost
 	for k, v := range headers {
-		req.Header.Add(k, v)
+		req.Header.Set(k, v)
 	}
 
 	resp, err := client.Do(req)
@@ -262,7 +331,7 @@ func fetch(url string) {
 		info.Title = m[1]
 	}
 
-	// 响应头提取字段
+	// 从响应头中提取字段 Server Content-Type X-Powered-By
 	info.Server = resp.Header.Get("Server")
 	info.ContentLength = resp.Header.Get("Content-Length")
 	info.XPoweredBy = resp.Header.Get("X-Powered-By")
@@ -274,7 +343,8 @@ func fetch(url string) {
 
 	statusCode := strconv.Itoa(info.StatusCode)
 
-	if strings.Contains(respBody, grepString) && (code == 0 || strings.HasPrefix(statusCode, strconv.Itoa(code))) {
+	// filter (response body. server info. status code)
+	if strings.Contains(respBody, grepString) && strings.Contains(info.String(), filterString) && (code == 0 || strings.HasPrefix(statusCode, strconv.Itoa(code))) {
 		var line = fmt.Sprintf("%-5d %-6s %-16s %-55s %-20s %-50s %s\n", info.StatusCode, info.ContentLength, info.ContentType, info.Server, info.XPoweredBy, info.Url, info.Title)
 		if runtime.GOOS == "windows" {
 			fmt.Printf(line)

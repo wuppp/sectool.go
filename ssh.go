@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"common"
 	"flag"
 	"fmt"
 	"net"
@@ -11,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"sectool.go/common"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -128,14 +129,7 @@ func main() {
 		defer f.Close()
 	}
 
-	fmt.Printf("host: %s\n", host)
-	fmt.Printf("port: %s\n", port)
-	fmt.Printf("file: %s\n", file)
-	fmt.Printf("user: %s\n", user)
-	fmt.Printf("pwd: %s\n", pwd)
-	fmt.Printf("userFile: %s\n", userListFile)
-	fmt.Printf("pwdFile: %s\n", pwdListFile)
-	fmt.Printf("Number of scans: %d\n", len(scanList))
+	common.PrintInfo(scanList)
 
 	startTime := time.Now()
 	for _, line := range scanList {
@@ -160,7 +154,7 @@ func scan(ip string, port int) {
 
 	for _, username := range userList {
 		for _, password := range pwdList {
-			if isLogin, client := sshLogin(ip, port, username, password); isLogin {
+			if isLogin, client, err := sshLogin(ip, port, username, password); isLogin {
 
 				var line = fmt.Sprintf("%s:%d %s %s\n", ip, port, username, password)
 				f.WriteString(line)
@@ -173,13 +167,15 @@ func scan(ip string, port int) {
 				fmt.Printf("\033[0;32m[cmd] %s:%d \n%s\033[0m", ip, port, output)
 				return
 			} else {
-				// fmt.Printf("[err] %s:%d %s %s\n", ip, port, username, password)
+				if strings.HasPrefix(err.Error(), "ssh: ") {
+					// fmt.Printf("[err] %s:%d %s\n", ip, port, err)
+				}
 			}
 		}
 	}
 }
 
-func sshLogin(ip string, port int, username string, password string) (bool, *ssh.Client) {
+func sshLogin(ip string, port int, username string, password string) (bool, *ssh.Client, error) {
 
 	clientConfig := &ssh.ClientConfig{
 		Timeout: time.Duration(timeout) * time.Second,
@@ -192,9 +188,9 @@ func sshLogin(ip string, port int, username string, password string) (bool, *ssh
 	conn, err := ssh.Dial("tcp", fmt.Sprintf("%s:%d", ip, port), clientConfig)
 	if err != nil {
 		//fmt.Println("Failed to dial: " + err.Error())
-		return false, nil
+		return false, nil, err
 	}
-	return true, conn
+	return true, conn, nil
 }
 
 func sshExec(client *ssh.Client, cmd string) (string, error) {

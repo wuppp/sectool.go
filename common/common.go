@@ -94,6 +94,7 @@ func ParseIP(ipString string) ([]string, error) {
 			splitIP := strings.SplitN(item, "-", 2)
 			ip := net.ParseIP(splitIP[0])
 			endIP := net.ParseIP(splitIP[1])
+			end, _ := strconv.Atoi(splitIP[1])
 			if endIP != nil {
 				if !isStartingIPLower(ip, endIP) {
 					return ipList, fmt.Errorf("%s is greater than %s", ip.String(), endIP.String())
@@ -103,20 +104,27 @@ func ParseIP(ipString string) ([]string, error) {
 					increaseIP(ip)
 					ipList = append(ipList, ip.String())
 				}
-			} else {
+			} else if end >= 1 && end <= 255 {
 				ipOct := strings.SplitN(ip.String(), ".", 4)
-				endIP := net.ParseIP(ipOct[0] + "." + ipOct[1] + "." + ipOct[2] + "." + splitIP[1])
-				if endIP != nil {
-					if !isStartingIPLower(ip, endIP) {
-						return ipList, fmt.Errorf("%s is greater than %s", ip.String(), endIP.String())
+				if len(ipOct) == 4 {
+					a, _ := strconv.Atoi(ipOct[0])
+					b, _ := strconv.Atoi(ipOct[1])
+					c, _ := strconv.Atoi(ipOct[2])
+					if (a >= 1 && a <= 255) && (b >= 1 && b <= 255) && (c >= 1 && c <= 255) {
+						endIP := net.ParseIP(ipOct[0] + "." + ipOct[1] + "." + ipOct[2] + "." + splitIP[1])
+						if endIP != nil {
+							if !isStartingIPLower(ip, endIP) {
+								return ipList, fmt.Errorf("%s is greater than %s", ip.String(), endIP.String())
+							}
+							ipList = append(ipList, ip.String())
+							for !ip.Equal(endIP) {
+								increaseIP(ip)
+								ipList = append(ipList, ip.String())
+							}
+						} else {
+							return ipList, fmt.Errorf("%s is not an IP Address or CIDR Network", item)
+						}
 					}
-					ipList = append(ipList, ip.String())
-					for !ip.Equal(endIP) {
-						increaseIP(ip)
-						ipList = append(ipList, ip.String())
-					}
-				} else {
-					return ipList, fmt.Errorf("%s is not an IP Address or CIDR Network", item)
 				}
 			}
 		} else {
