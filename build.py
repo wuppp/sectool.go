@@ -4,7 +4,9 @@ import shutil
 
 # os.environ['GOPATH'] = os.getcwd()
 
-shutil.rmtree("./release")
+if os.path.isdir('./release'):
+    shutil.rmtree("./release")
+
 if not os.path.isdir("./release"):
     os.mkdir("./release")
 
