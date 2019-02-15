@@ -257,20 +257,19 @@ func main() {
 		if port == 443 {
 			url = fmt.Sprintf("https://%s%s", host, path)
 		}
-		go scan(url)
+
+		go fetch(url)
 	}
 	wg.Wait()
 	scanDuration := time.Since(startTime)
 	fmt.Printf("scan finished in %v", scanDuration)
 }
 
-func scan(url string) {
-	fetch(url)
-	<-ch
-	wg.Done()
-}
-
 func fetch(url string) {
+	defer func() {
+		<-ch
+		wg.Done()
+	}()
 
 	client := &http.Client{
 		Timeout:   time.Duration(timeout) * time.Second,
@@ -293,11 +292,15 @@ func fetch(url string) {
 	} else {
 		req, err = http.NewRequest(method, url, nil)
 	}
-	if err != nil {
-		// log.Println(err)
+	if err != nil || req == nil {
+		log.Println(err)
+		return
 	}
 
-	req.Host = reqHost
+	if reqHost != "" {
+		req.Host = reqHost
+	}
+
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}

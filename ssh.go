@@ -168,6 +168,7 @@ func scan(ip string, port int) {
 				return
 			} else {
 				if strings.HasPrefix(err.Error(), "ssh: ") {
+					fmt.Printf("\033[0;33m[err] %s:%d %s\033[0m\n", ip, port, err)
 					// fmt.Printf("[err] %s:%d %s\n", ip, port, err)
 				}
 			}

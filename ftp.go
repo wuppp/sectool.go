@@ -1,12 +1,8 @@
 package main
 
 import (
-	"bytes"
-	"database/sql"
 	"flag"
 	"fmt"
-	"io/ioutil"
-	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -15,9 +11,7 @@ import (
 
 	"sectool.go/common"
 
-	"github.com/go-sql-driver/mysql"
-	_ "github.com/go-sql-driver/mysql"
-	"github.com/olekukonko/tablewriter"
+	"github.com/jlaffaye/ftp"
 )
 
 var (
@@ -41,12 +35,6 @@ var (
 	outputFile string
 )
 
-func init() {
-	// disbaled mysql package log
-	silent := log.New(ioutil.Discard, "", 0)
-	mysql.SetLogger(silent)
-}
-
 func main() {
 
 	options := common.PublicOptions
@@ -54,7 +42,7 @@ func main() {
 	flag.StringVar(&pwd, "pwd", "", "password")
 	flag.StringVar(&userListFile, "uF", "", "username file path")
 	flag.StringVar(&pwdListFile, "pF", "", "password file path")
-	flag.StringVar(&command, "command", "select version();", "password file path")
+	flag.StringVar(&command, "command", "id", "password file path")
 	flag.Parse()
 
 	host = *options.Host
@@ -71,6 +59,8 @@ func main() {
 		os.Exit(0)
 	}
 
+	scanList := []string{}
+
 	if userListFile != "" {
 		userList, _ = common.ReadFileLines(userListFile)
 	} else if user != "" {
@@ -85,7 +75,6 @@ func main() {
 
 	ipList, _ := common.ParseIP(host)
 	portList, _ := common.ParsePort(port)
-	scanList := []string{}
 
 	if len(ipList) != 0 && len(portList) != 0 {
 		for _, host := range ipList {
@@ -118,7 +107,7 @@ func main() {
 			for _, line := range lines {
 				line = strings.Trim(line, " ")
 				h := line
-				p := 3306
+				p := 22
 				if strings.Contains(line, ":") {
 					hostPort := strings.Split(line, ":")
 					h = hostPort[0]
@@ -163,21 +152,20 @@ func scan(ip string, port int) {
 
 	for _, username := range userList {
 		for _, password := range pwdList {
-			if isLogin, client, err := mysqlConnect(ip, port, username, password); isLogin {
+			if isLogin, client, err := ftpLogin(ip, port, username, password); isLogin {
 
 				var line = fmt.Sprintf("%s:%d %s %s\n", ip, port, username, password)
 				f.WriteString(line)
 				fmt.Printf("\033[0;32m[log] %s:%d %s %s\033[0m\n", ip, port, username, password)
 
-				output, err := mysqlExec(client, command)
+				output, err := ftpExec(client, command)
 				if err != nil {
 					fmt.Println("Failed to exec: " + err.Error())
 				}
-				fmt.Printf("\033[0;32m[sql] %s:%d \n%s\033[0m", ip, port, output)
+				fmt.Printf("\033[0;32m[cmd] %s:%d \n%s\033[0m", ip, port, output)
 				return
 			} else {
-				if strings.HasPrefix(err.Error(), "Error ") {
-					err := strings.SplitN(err.Error(), ":", 2)
+				if strings.HasPrefix(err.Error(), "5") {
 					fmt.Printf("\033[0;33m[err] %s:%d %s\033[0m\n", ip, port, err)
 				}
 			}
@@ -185,91 +173,41 @@ func scan(ip string, port int) {
 	}
 }
 
-func mysqlConnect(ip string, port int, username string, password string) (bool, *sql.DB, error) {
+func ftpLogin(ip string, port int, username string, password string) (bool, *ftp.ServerConn, error) {
 
-	DSN := fmt.Sprintf("%s:%s@tcp(%s:%d)/?charset=utf8&timeout=%ds", username, password, ip, port, timeout)
-	db, err := sql.Open("mysql", DSN)
-
+	conn, err := ftp.DialTimeout(fmt.Sprintf("%s:%d", ip, port), time.Duration(timeout)*time.Second)
 	if err != nil {
+		//fmt.Println("Failed to dial: " + err.Error())
 		return false, nil, err
 	}
-
-	err = db.Ping()
+	err = conn.Login(username, password)
 	if err != nil {
-		db.Close()
-		// fmt.Println("Connect Error", err)
+		// fmt.Println("Login: " + err.Error())
 		return false, nil, err
 	}
-
-	return true, db, nil
+	return true, conn, nil
 }
 
-func mysqlExec(db *sql.DB, sqlStr string) (string, error) {
+func ftpExec(client *ftp.ServerConn, cmd string) (string, error) {
 
-	defer db.Close()
-
-	// Execute the query
-	rows, err := db.Query(sqlStr)
+	fileList, err := client.List("")
 	if err != nil {
-		panic(err.Error()) // proper error handling instead of panic in your app
+		return "", err
 	}
 
-	// Get column names
-	columns, err := rows.Columns()
-	if err != nil {
-		panic(err.Error()) // proper error handling instead of panic in your app
-	}
+	defer client.Logout()
+	defer client.Quit()
 
-	// Make a slice for the values
-	values := make([]sql.RawBytes, len(columns))
-
-	// rows.Scan wants '[]interface{}' as an argument, so we must copy the
-	// references into such a slice
-	// See http://code.google.com/p/go-wiki/wiki/InterfaceSlice for details
-	scanArgs := make([]interface{}, len(values))
-	for i := range values {
-		scanArgs[i] = &values[i]
-	}
-
-	buf := new(bytes.Buffer)
-	table := tablewriter.NewWriter(buf)
-	table.SetHeader(columns)
-	// table.SetCaption(true, "Movie ratings.")
-
-	var data [][]string
-	// Fetch rows
-	for rows.Next() {
-		// get RawBytes from data
-		err = rows.Scan(scanArgs...)
-		if err != nil {
-			panic(err.Error()) // proper error handling instead of panic in your app
+	var s string
+	for _, file := range fileList {
+		var fileType string
+		if file.Type == 1 {
+			fileType = "directory"
+		} else {
+			fileType = "file"
 		}
-
-		// Now do something with the data.
-		// Here we just print each column as a string.
-
-		var v []string
-		var value string
-		for _, col := range values {
-			// Here we can check if the value is nil (NULL value)
-			if col == nil {
-				value = "NULL"
-			} else {
-				value = string(col)
-			}
-			v = append(v, value)
-		}
-		data = append(data, v)
+		s += fmt.Sprintf("%-30s %-9s %-8d %s\n", file.Name, fileType, file.Size, file.Time.Format("2006-01-02T15:04:05.999999"))
 	}
 
-	for _, v := range data {
-		table.Append(v)
-	}
-	table.Render() // Send output
-	return buf.String(), nil
-
-	if err = rows.Err(); err != nil {
-		panic(err.Error()) // proper error handling instead of panic in your app
-	}
-	return "", err
+	return s, nil
 }

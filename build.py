@@ -1,31 +1,36 @@
 import os
+import glob
 import shutil
 
-os.environ['GOPATH'] = os.getcwd()
+# os.environ['GOPATH'] = os.getcwd()
 
+shutil.rmtree("./release")
 if not os.path.isdir("./release"):
     os.mkdir("./release")
 
 goos_list = ("linux", "darwin", "freebsd", "windows", )
 goarch_list = ("amd64", "386", )
-go_list = ("portscan.go", "httpbanner.go", "ping.go", "ssh.go", )
+go_list = glob.glob("./*.go")
 
 for goos in goos_list:
     for arch in goarch_list:
-        filename = "sectool_%s_%s.zip" % (goos, arch)
+        zip_filename = "sectool_%s_%s.zip" % (goos, arch)
+        file_list = []
+        os.environ['GOOS'] = goos
+        os.environ['GOARCH'] = arch
         print(goos, arch)
+
         for f in go_list:
-            os.environ['GOOS'] = goos
-            os.environ['GOARCH'] = arch
-            cmd = "go build %s" % f
+            if f.endswith(".go"):
+                output_file = "%s_%s_%s" % (f[:-3], goos, arch)
+                if goos == "windows":
+                    output_file = "%s_%s_%s.exe" % (f[:-3], goos, arch)
+            cmd = "go build -o {0} {1}".format(output_file, f)
+            file_list.append(output_file)
             os.system(cmd)
-        file_list = " ".join([i[:-3] for i in go_list])
-        zip_cmd = "zip -r %s %s" % (filename, file_list)
-        rm_cmd = "rm %s" % file_list
-        if goos == "windows":
-            file_list = " ".join([i[:-3] + ".exe" for i in go_list])
-            zip_cmd = "zip -r %s %s" % (filename, file_list)
-            rm_cmd = "rm %s" % file_list
+
+        zip_cmd = "zip -r %s %s" % (zip_filename, " ".join(file_list))
+        rm_cmd = "rm %s" % " ".join(file_list)
         os.system(zip_cmd) 
         os.system(rm_cmd)
-        shutil.move(filename, "./release")
+        shutil.move(zip_filename, "./release")
