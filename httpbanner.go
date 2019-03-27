@@ -174,9 +174,8 @@ func main() {
 		os.Exit(0)
 	}
 
-	ipList, _ := common.ParseIP(host)
-	portList, _ := common.ParsePort(port)
-	scanList := []string{}
+
+	//scanList := []string{}
 
 	// 处理请求头
 	for _, line := range reqHeaders {
@@ -190,51 +189,6 @@ func main() {
 		}
 	}
 
-	if len(ipList) != 0 && len(portList) != 0 {
-		for _, host := range ipList {
-			for _, port := range portList {
-				scanHost := fmt.Sprintf("%s:%d", host, port)
-				scanList = append(scanList, scanHost)
-			}
-		}
-	} else if file != "" {
-		lines, err := common.ReadFileLines(file)
-		if err != nil {
-			fmt.Println(err)
-			os.Exit(1)
-		}
-		lines = common.ParseLines(lines)
-
-		if len(portList) != 0 {
-			for _, line := range lines {
-				line = strings.Trim(line, " ")
-				h := line
-				if strings.Contains(line, ":") {
-					hostPort := strings.Split(line, ":")
-					h = hostPort[0]
-				}
-				for _, p := range portList {
-					scanHost := fmt.Sprintf("%s:%d", h, p)
-					scanList = append(scanList, scanHost)
-				}
-			}
-		} else {
-			for _, line := range lines {
-				line = strings.Trim(line, " ")
-				h := line
-				p := 80
-				if strings.Contains(line, ":") {
-					hostPort := strings.Split(line, ":")
-					h = hostPort[0]
-					p, _ = strconv.Atoi(hostPort[1])
-				}
-
-				scanHost := fmt.Sprintf("%s:%d", h, p)
-				scanList = append(scanList, scanHost)
-			}
-		}
-	}
-
 	if outputFile != "" {
 		var err error
 		f, err = os.OpenFile(outputFile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
@@ -243,33 +197,79 @@ func main() {
 	}
 
 	// 打印所有参数
-	common.PrintInfo(scanList)
+	common.PrintInfo()
 
 	startTime := time.Now()
-	for _, line := range scanList {
-		ch <- true
-		wg.Add(1)
 
-		pair := strings.SplitN(line, ":", 2)
-		host := pair[0]
-		port, _ := strconv.Atoi(pair[1])
-		url := fmt.Sprintf("http://%s:%d%s", host, port, path)
-		if port == 443 {
-			url = fmt.Sprintf("https://%s%s", host, path)
+	ipList, _ := common.ParseIP(host)
+	portList, _ := common.ParsePort(port)
+
+	for host := range ipList {
+		for port := range portList {
+			ch <- true
+			wg.Add(1)
+			go fetch(host, port, path)
+		}
+	}
+
+	if file != "" {
+		lines, err := common.ReadFileLines(file)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
 		}
 
-		go fetch(url)
+		flag := true
+		portList, _ = common.ParsePort(port)
+		for port := range portList {
+			flag = false
+			for line := range lines {
+				line = strings.Trim(line, " ")
+				h := line
+				if strings.Contains(line, ":") {
+					hostPort := strings.Split(line, ":")
+					h = hostPort[0]
+				}
+				ch <- true
+				wg.Add(1)
+				go fetch(h, port, path)
+			}
+		}
+
+		if flag {
+			for line := range lines {
+				line = strings.Trim(line, " ")
+				h := line
+				p := 80
+				if strings.Contains(line, ":") {
+					hostPort := strings.Split(line, ":")
+					h = hostPort[0]
+					p, _ = strconv.Atoi(hostPort[1])
+				}
+				ch <- true
+				wg.Add(1)
+				go fetch(h, p, path)
+			}
+		}
+
 	}
+
 	wg.Wait()
 	scanDuration := time.Since(startTime)
 	fmt.Printf("scan finished in %v", scanDuration)
+
 }
 
-func fetch(url string) {
+func fetch(host string, port int, path string) {
 	defer func() {
 		<-ch
 		wg.Done()
 	}()
+
+	url := fmt.Sprintf("http://%s:%d%s", host, port, path)
+	if port == 443 {
+		url = fmt.Sprintf("https://%s%s", host, path)
+	}
 
 	client := &http.Client{
 		Timeout:   time.Duration(timeout) * time.Second,
@@ -368,3 +368,4 @@ func fetch(url string) {
 	}
 
 }
+

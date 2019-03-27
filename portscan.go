@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -44,16 +42,6 @@ func main() {
 		os.Exit(0)
 	}
 
-	ipList, _ := common.ParseIP(host)
-	portList, _ := common.ParsePort(port)
-	scanList := []string{}
-
-	for _, host := range ipList {
-		for _, port := range portList {
-			scanHost := fmt.Sprintf("%s:%d", host, port)
-			scanList = append(scanList, scanHost)
-		}
-	}
 
 	if outputFile != "" {
 		var err error
@@ -62,17 +50,19 @@ func main() {
 		defer f.Close()
 	}
 
-	common.PrintInfo(scanList)
+	common.PrintInfo()
+
+	ipList, _ := common.ParseIP(host)
+	portList, _ := common.ParsePort(port)
 
 	startTime := time.Now()
-	for _, line := range scanList {
-		ch <- true
-		wg.Add(1)
-
-		pair := strings.SplitN(line, ":", 2)
-		host := pair[0]
-		port, _ := strconv.Atoi(pair[1])
-		go scan(host, port)
+	for host := range ipList {
+		for port := range portList {
+			//println(fmt.Sprintf("%s:%d", host, port))
+			ch <- true
+			wg.Add(1)
+			go scan(host, port)
+		}
 	}
 	wg.Wait()
 	scanDuration := time.Since(startTime)
@@ -97,3 +87,4 @@ func isOpen(host string, port int) bool {
 	conn.Close()
 	return true
 }
+

@@ -20,7 +20,7 @@ func (m Msg) Show() {
 	fmt.Printf("Number of scans: %d\n\n", m.Count)
 }
 
-func PrintInfo(scanList []string) {
+func PrintInfo() {
 	var n int
 	var lines []string
 	flag.Visit(func(flag *flag.Flag) {
@@ -30,7 +30,7 @@ func PrintInfo(scanList []string) {
 
 		}
 	})
-	lines = append(lines, fmt.Sprintf("Number of scans: %d", len(scanList)))
+	//lines = append(lines, fmt.Sprintf("Number of scans: %d", len(scanList)))
 
 	for _, line := range lines {
 		if len(line) >= n {
@@ -45,3 +45,4 @@ func PrintInfo(scanList []string) {
 	}
 	fmt.Println(strings.Repeat("=", n))
 }
+
